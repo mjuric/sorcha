@@ -87,6 +87,8 @@ def create_ephemeris(orbits_df, pointings_df, args, configs):
         The dataframe of observations needed for Sorcha to continue
     """
     verboselog = args.pplogger.info if args.verbose else lambda *a, **k: None
+    
+    pointings_df, pixels = pointings_df
 
     ang_fov = configs["ar_ang_fov"]
     buffer = configs["ar_fov_buffer"]
@@ -150,7 +152,8 @@ def create_ephemeris(orbits_df, pointings_df, args, configs):
 
     verboselog("Generating ephemeris...")
 
-    for _, pointing in pointings_df.iterrows():
+    for pointing in pointings_df:
+#    for _, pointing in pointings_df.iterrows():
         mjd_tai = float(pointing["observationStartMJD_TAI"])
 
         # If the observation time is too far from the
@@ -168,8 +171,7 @@ def create_ephemeris(orbits_df, pointings_df, args, configs):
         # around the current pointing. The function `update_pixel_dict` does
         # the majority of the computation to build out `pixel_dict`.
         desigs = set()
-        pixId = pointings_df.attrs["pixels"]
-        for pix in pixId[pointing["pixels_begin"]:pointing["pixels_end"]]:
+        for pix in pixels[pointing["pixels_begin"]:pointing["pixels_end"]]:
             desigs.update(pixel_dict[pix])
 
         for obj_id in sorted(desigs):

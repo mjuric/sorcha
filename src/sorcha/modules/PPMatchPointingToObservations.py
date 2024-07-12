@@ -31,13 +31,26 @@ def PPMatchPointingToObservations(padain, pointfildb):
     for name in ["visit_vector", "pixels", "r_obs", "v_obs", "r_sun", "v_sun"]:
         pointing_columns_to_skip += [ f"{name}_x", f"{name}_y", f"{name}_z" ]
 
-    resdf = pd.merge(
-        padain,
-        pointfildb.loc[:, ~pointfildb.columns.isin(pointing_columns_to_skip)],
-        left_on="FieldID",
-        right_on="FieldID",
-        how="left",
-    )
+    if True:
+        # columns to pick
+        cols = list(set(pointfildb.dtype.names) - set(pointing_columns_to_skip))
+        pointfildb = pointfildb[cols]
+
+        import numpy.lib.recfunctions as rfn
+        resdf = rfn.join_by("FieldID", padain.to_records(), pointfildb, jointype="inner", usemask=False)
+        resdf = pd.DataFrame(resdf)
+    else:
+        pointfildb = pd.DataFrame(pointfildb)
+        resdf = pd.merge(
+            padain,
+            pointfildb.loc[:, ~pointfildb.columns.isin(pointing_columns_to_skip)],
+            left_on="FieldID",
+            right_on="FieldID",
+            how="left",
+        )
+    resdf['optFilter'] = resdf['optFilter'].str.decode("utf-8")
+    print(resdf.dtypes)
+
     colour_values = resdf.optFilter.unique()
     colour_values = pd.Series(colour_values).dropna()
 

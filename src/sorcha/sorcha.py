@@ -54,6 +54,25 @@ def mem(df):
         usage += v.nbytes
     return usage
 
+def load_pointings(args, configs):
+
+    filterpointing = PPReadPointingDatabase(
+        args.pointing_database, configs["observing_filters"], configs["pointing_sql_query"]
+    )
+
+    # if we are going to compute the ephemerides, then we should pre-compute all
+    # of the needed values derived from the pointing information.
+    if configs["ephemerides_type"].casefold() != "external":
+        verboselog("Pre-computing pointing information for ephemeris generation")
+        filterpointing = precompute_pointing_information(filterpointing, args, configs)
+
+    # convert to numpy arrays
+    filter_strlen = max(map(len, filterpointing.dtypes["optFilter"].categories))
+    pixels = filterpointing.attrs["pixels"]
+    fp = filterpointing.to_records(index=False, column_dtypes=dict(optFilter=f'a{filter_strlen}'))
+    
+    return fp, pixels
+
 def runLSSTSimulation(args, configs, pplogger=None):
     """
     Runs the post processing survey simulator functions that apply a series of
@@ -117,20 +136,29 @@ def runLSSTSimulation(args, configs, pplogger=None):
 
     verboselog("Reading pointing database...")
 
-    filterpointing = PPReadPointingDatabase(
-        args.pointing_database, configs["observing_filters"], configs["pointing_sql_query"]
-    )
-##    print("POSTREAD:", len(filterpointing), type(filterpointing), mem(filterpointing))
-##    print(filterpointing.dtypes)
+    # Check if we have these files pre-cached
+    # FIXME: this is a hack, find something better/less manual
+    if "SORCHA_MMAP_POINTINGS" in os.environ:
+        # mmap files for pointings
+        import tempfile, fasteners
 
-    # if we are going to compute the ephemerides, then we should pre-compute all
-    # of the needed values derived from the pointing information.
-    if configs["ephemerides_type"].casefold() != "external":
-        verboselog("Pre-computing pointing information for ephemeris generation")
-        filterpointing = precompute_pointing_information(filterpointing, args, configs)
-##        print("POSTPOINTING:", len(filterpointing), type(filterpointing), mem(filterpointing))
-##        print(filterpointing.dtypes)
-##        print("POSTPOINTING:", len(filterpointing), type(filterpointing), filterpointing.memory_usage(deep=True))
+        tmpdir = tempfile.gettempdir()
+        fnprefix = os.path.join(tmpdir, os.environ['SORCHA_MMAP_POINTINGS'])
+
+        lockfn = fnprefix + '.lock'
+        pointingsfn = fnprefix + '.pointings'
+        pixelsfn = fnprefix + '.pixels'
+
+        lock = fasteners.InterProcessLock(lockfn)
+        with lock:
+            if not os.exists(pointingsfn):
+                pointings, pixels = load_pointings(args, configs)
+                store_mmap()
+            else:
+                load_mmaps()
+    else:
+        pointings, pixels = load_pointings(args, configs)
+    filterpointing = pointings, pixels
 
     # Set up the data readers.
     ephem_type = configs["ephemerides_type"]
@@ -200,7 +228,7 @@ def runLSSTSimulation(args, configs, pplogger=None):
             startChunk = startChunk + configs["size_serial_chunk"]
             continue
 
-        observations = PPMatchPointingToObservations(observations, filterpointing)
+        observations = PPMatchPointingToObservations(observations, fp)
 
         verboselog("Calculating apparent magnitudes...")
         observations = PPCalculateApparentMagnitude(

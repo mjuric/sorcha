@@ -43,13 +43,14 @@ def PPApplyColourOffsets(observations, function, othercolours, observing_filters
     try:
         unique_opt_filters = observations["optFilter"].unique()
         for filter in unique_opt_filters:
+            print(f"{type(filter)=}")
             mask = observations["optFilter"] == filter
             diff_column_name = f"{filter}-{mainfilter}"
             observations.loc[mask, H_col] = observations[H_col] + observations[diff_column_name]
 
-    except KeyError:
-        pplogger.error("ERROR: PPApplyColourOffsets: H column missing!")
-        sys.exit("ERROR: PPApplyColourOffsets: H column missing!")
+    except KeyError as e:
+        pplogger.error(f"ERROR: PPApplyColourOffsets: column {e.args[0]} missing!")
+        sys.exit(f"ERROR: PPApplyColourOffsets: column {e.args[0]} missing!")
 
     # then check the columns for the phase function variables
     # if colour-specific terms exist, pick the columns with the appropriate colour
